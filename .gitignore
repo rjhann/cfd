@@ -1,0 +1,9 @@
+*.dSYM
+*.o
+*.bin
+!initial.bin
+bin2ppm
+colcopy
+diffbin
+karman
+pingpong
