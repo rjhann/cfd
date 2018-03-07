@@ -4,7 +4,7 @@ CFLAGS=-O2 -Wall -g -pg
 .c.o:
 	$(CC) -c $(CFLAGS) $<
 
-all: bin2ppm diffbin pingpong colcopy karman # karman-par
+all: bin2ppm diffbin pingpong colcopy karman karman-par
 
 clean:
 	rm -f bin2ppm diffbin pingpong colcopy karman karman-par *.o
