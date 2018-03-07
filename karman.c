@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
     int show_help = 0, show_usage = 0, show_version = 0;
 
     progname = argv[0];
-    infile = strdup("karman.bin");
+    infile = strdup("");
     outfile = strdup("karman.bin");
 
     int optc;

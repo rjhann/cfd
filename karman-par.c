@@ -373,10 +373,10 @@ int main(int argc, char *argv[])
     MPI_Type_vector(block_x+2, block_y+2, jmax+3, MPI_FLOAT, &f_block);
     MPI_Type_vector(block_x+2, block_y+2, jmax+3, MPI_CHAR, &c_block);
     
-    MPI_Type_vector(1, block_y-1, jmax+3, MPI_FLOAT, &g_f_scol);
-    MPI_Type_vector(1, block_y, jmax+3, MPI_FLOAT, &g_f_lcol);
-    MPI_Type_vector(1, block_y-1, block_y+2, MPI_FLOAT, &l_f_scol);
-    MPI_Type_vector(1, block_y, block_y+2, MPI_FLOAT, &l_f_lcol);
+    MPI_Type_vector(block_x, block_y-1, jmax+3, MPI_FLOAT, &g_f_scol);
+    MPI_Type_vector(block_x, block_y, jmax+3, MPI_FLOAT, &g_f_lcol);
+    MPI_Type_vector(block_x, block_y-1, block_y+2, MPI_FLOAT, &l_f_scol);
+    MPI_Type_vector(block_x, block_y, block_y+2, MPI_FLOAT, &l_f_lcol);
     
     MPI_Type_vector(block_x, 1, block_y+2, MPI_FLOAT, &f_x_edge);
     MPI_Type_vector(1, block_y, block_y+2, MPI_FLOAT, &f_y_edge);
@@ -447,7 +447,7 @@ int main(int argc, char *argv[])
     // All processors receive block from rank 0.
     local_count_flag[0] = (block_x+2) * (block_y+2);
     local_count_data_d[0] = (block_x+2) * (block_y+2);
-    local_count_data_c[0] = l_imax*2;
+    local_count_data_c[0] = 1;
     local_displ_data_c[0] = (&(l_p[1][1]) - &(l_p[0][0])) * sizeof(float);
     if (l_jmax == block_y) local_type_data_c[0] = l_f_lcol;
     
@@ -483,7 +483,7 @@ int main(int argc, char *argv[])
             global_displ_flag[i] = &(flag[x][y]) - &(flag[0][0]);
             global_displ_data_d[i] = (&(p[x][y]) - &(p[0][0])) * sizeof(float);
             
-            global_count_data_c[i] = x_size[i]*2;
+            global_count_data_c[i] = 1;
             if (y_size[i] == block_y) global_type_data_c[i] = g_f_lcol;
             // +1s account for dropping local borders on collection.
             global_displ_data_c[i] = (&(p[x+1][y+1]) - &(p[0][0])) * sizeof(float);
