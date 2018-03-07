@@ -141,10 +141,6 @@ int poisson(float **p, float **rhs, char **flag, int imax, int jmax,
     /* Red/Black SOR-iteration */
     for (iter = 0; iter < itermax; iter++) {
         for (rb = 0; rb <= 1; rb++) {
-            MPI_Alltoallw(p[0], sendcounts_edge, senddispls_edge,
-                sendtypes_edge, p[0], recvcounts_edge, recvdispls_edge,
-                recvtypes_edge, MPI_COMM_WORLD);
-            
             for (i = 1; i <= imax; i++) {
                 for (j = 1; j <= jmax; j++) {
                     if ((istart+i+jstart+j) % 2 != rb) { continue; }
@@ -168,6 +164,11 @@ int poisson(float **p, float **rhs, char **flag, int imax, int jmax,
                     }
                 } /* end of j */
             } /* end of i */
+            
+            MPI_Alltoallw(p[0], sendcounts_edge, senddispls_edge,
+                sendtypes_edge, p[0], recvcounts_edge, recvdispls_edge,
+                recvtypes_edge, MPI_COMM_WORLD);
+            
         } /* end of rb */
         
         /* Partial computation of residual */
