@@ -67,8 +67,10 @@ int main(int argc, char *argv[])
     int verbose = 1;          /* Verbosity level */
     float xlength = 22.0;     /* Width of simulated domain */
     float ylength = 4.1;      /* Height of simulated domain */
-    int imax = 660;           /* Number of cells horizontally */
-    int jmax = 120;           /* Number of cells vertically */
+    // int imax = 660;           /* Number of cells horizontally */
+    // int jmax = 120;           /* Number of cells vertically */
+    int imax = 7;           /* Number of cells horizontally */
+    int jmax = 9;           /* Number of cells vertically */
 
     char *infile;             /* Input raw initial conditions */
     char *outfile;            /* Output raw simulation results */
@@ -198,7 +200,9 @@ int main(int argc, char *argv[])
                 for (j=0;j<=jmax+1;j++) {
                     u[i][j] = ui;
                     v[i][j] = vi;
-                    p[i][j] = 0.0;
+                    // p[i][j] = 0.0;
+                    p[i][j] = 1.0;
+                    // p[i][j] = 100*i + j;
                 }
             }
             init_flag(flag, imax, jmax, delx, dely, &ibound);
@@ -538,12 +542,57 @@ int main(int argc, char *argv[])
     
     /* END CREATE COMMUNICATION ARRAYS */
     
+    MPI_Barrier(MPI_COMM_WORLD);
+    sleep(1);
+    if (proc == 0) printf("\n");
+    int n;
+    
+    if (proc == 0) {
+        printf("Global flags:\n");
+        for (i = 0; i < imax+3; i++) {
+            for (j = 0; j < jmax+3; j++) {
+                printf("%02d ", flag[i][j]);
+            }
+            printf("\n");
+        }
+        printf("\n");
+    }
+    
+    // for (n = 0; n < nprocs; n++) {
+    //     if (proc == n) {
+    //         for (i = 0; i < nprocs; i++) {
+    //             printf("%10d  %10d  %10d  %10d\n",
+    //                 global_count_flag[i], global_displ_flag[i],
+    //                 local_count_flag[i], local_displ_flag[i]);
+    //         }
+    //         printf("\n");
+    //     }
+        
+    //     MPI_Barrier(MPI_COMM_WORLD);
+    // }
+    // sleep(1);
     
     
     // Distribute flags once as they don't change.
     MPI_Alltoallw(flag[0], global_count_flag, global_displ_flag,
         global_type_flag, l_flag[0], local_count_flag, local_displ_flag,
         local_type_flag, MPI_COMM_WORLD);
+    
+    for (n = 0; n < nprocs; n++) {
+        if (proc == n) {
+            printf("Rank %d flags:\n", proc);
+            for (i = 0; i < block_x+2; i++) {
+                for (j = 0; j < block_y+2; j++) {
+                    printf("%02d ", l_flag[i][j]);
+                }
+                printf("\n");
+            }
+            printf("\n");
+        }
+        
+        MPI_Barrier(MPI_COMM_WORLD);
+    }
+    sleep(1);
     
     /* Main loop */
     for (t = 0.0; t < t_end; t += del_t, iters++) {
@@ -563,6 +612,17 @@ int main(int argc, char *argv[])
         MPI_Bcast(&del_t, 1, MPI_INT, 0, MPI_COMM_WORLD);
         
         if (ifluid > 0) {
+            if (proc == 0) {
+                printf("Global p (pre):\n");
+                for (i = 0; i < imax+3; i++) {
+                    for (j = 0; j < jmax+3; j++) {
+                        printf("%04d ", (int)p[i][j]);
+                    }
+                    printf("\n");
+                }
+                printf("\n");
+            }
+            
             MPI_Alltoallw(p[0], global_count_data_d, global_displ_data_d,
                 global_type_data_d, l_p[0], local_count_data_d,
                 local_displ_data_d, local_type_data_d, MPI_COMM_WORLD);
@@ -570,12 +630,110 @@ int main(int argc, char *argv[])
                 global_type_data_d, l_rhs[0], local_count_data_d,
                 local_displ_data_d, local_type_data_d, MPI_COMM_WORLD);
             
-            itersor = poisson(l_p, l_rhs, l_flag, l_imax, l_jmax, delx, dely,
-                        eps, itermax, omega, &res, ifluid);
+            for (n = 0; n < nprocs; n++) {
+                if (proc == n) {
+                    printf("Rank %d p (pre):\n", proc);
+                    for (i = 0; i < block_x+2; i++) {
+                        for (j = 0; j < block_y+2; j++) {
+                            printf("%04d ", (int)l_p[i][j]);
+                        }
+                        printf("\n");
+                    }
+                    printf("\n");
+                }
+                
+                MPI_Barrier(MPI_COMM_WORLD);
+            }
+            sleep(1);
+            
+            for (i = 1; i <= l_imax; i++) {
+                for (j = 1; j <= l_jmax; j++) {
+                    l_p[i][j] += proc + 1;
+                }
+            }
+            
+            for (n = 0; n < nprocs; n++) {
+                if (proc == n) {
+                    printf("Rank %d p (inter):\n", proc);
+                    for (i = 0; i < block_x+2; i++) {
+                        for (j = 0; j < block_y+2; j++) {
+                            printf("%04d ", (int)l_p[i][j]);
+                        }
+                        printf("\n");
+                    }
+                    printf("\n");
+                }
+                
+                MPI_Barrier(MPI_COMM_WORLD);
+            }
+            sleep(1);
+            
+            // for (n = 0; n < nprocs; n++) {
+            //     if (proc == n) {
+            //         for (i = 0; i < nprocs; i++) {
+            //             printf("%10d  %10d  %10d  %10d\n",
+            //                 sendcounts_edge[i], senddispls_edge[i],
+            //                 recvcounts_edge[i], recvdispls_edge[i]);
+            //         }
+            //         printf("\n");
+            //     }
+                
+            //     MPI_Barrier(MPI_COMM_WORLD);
+            // }
+            // sleep(1);
+            
+            MPI_Alltoallw(l_p[0], sendcounts_edge, senddispls_edge,
+                sendtypes_edge, l_p[0], recvcounts_edge, recvdispls_edge,
+                recvtypes_edge, MPI_COMM_WORLD);
+            
+            // itersor = poisson(l_p, l_rhs, l_flag, l_imax, l_jmax, delx, dely,
+            //             eps, itermax, omega, &res, ifluid);
+            
+            for (n = 0; n < nprocs; n++) {
+                if (proc == n) {
+                    printf("Rank %d p (post):\n", proc);
+                    for (i = 0; i < block_x+2; i++) {
+                        for (j = 0; j < block_y+2; j++) {
+                            printf("%04d ", (int)l_p[i][j]);
+                        }
+                        printf("\n");
+                    }
+                    printf("\n");
+                }
+                
+                MPI_Barrier(MPI_COMM_WORLD);
+            }
+            sleep(1);
+            
+            // for (n = 0; n < nprocs; n++) {
+            //     if (proc == n) {
+            //         for (i = 0; i < nprocs; i++) {
+            //             printf("%10d  %10d  %10d  %10d\n",
+            //                 local_count_data_c[i], local_displ_data_c[i],
+            //                 global_count_data_c[i], global_displ_data_c[i]);
+            //         }
+            //         printf("\n");
+            //     }
+                
+            //     MPI_Barrier(MPI_COMM_WORLD);
+            // }
+            // sleep(1);
             
             MPI_Alltoallw(l_p[0], local_count_data_c, local_displ_data_c,
                 local_type_data_c, p[0], global_count_data_c,
                 global_displ_data_c, global_type_data_c, MPI_COMM_WORLD);
+            
+            if (proc == 0) {
+                printf("Global p (post):\n");
+                for (i = 0; i < imax+3; i++) {
+                    for (j = 0; j < jmax+3; j++) {
+                        printf("%04d ", (int)p[i][j]);
+                    }
+                    printf("\n");
+                }
+                printf("\n");
+            }
+            MPI_Barrier(MPI_COMM_WORLD);
         } else {
             itersor = 0;
         }
