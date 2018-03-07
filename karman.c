@@ -3,6 +3,9 @@
 #include <string.h>
 #include <getopt.h>
 #include <errno.h>
+
+#include <mpi.h>
+
 #include "alloc.h"
 #include "boundary.h"
 #include "datadef.h"
@@ -81,6 +84,9 @@ int main(int argc, char *argv[])
     infile = strdup("");
     outfile = strdup("karman.bin");
 
+    double start = MPI_Wtime();
+    double init_start = MPI_Wtime();
+
     int optc;
     while ((optc = getopt_long(argc, argv, GETOPTS, long_opts, NULL)) != -1) {
         switch (optc) {
@@ -134,6 +140,8 @@ int main(int argc, char *argv[])
         return 0;
     }
 
+    printf("Running sequential karman on '%s'.\n\n", infile);
+    
     delx = xlength/imax;
     dely = ylength/jmax;
 
@@ -172,20 +180,35 @@ int main(int argc, char *argv[])
         apply_boundary_conditions(u, v, flag, imax, jmax, ui, vi);
     }
 
+    double init_end = MPI_Wtime();
+    double velocity_time = 0;
+    double poisson_time = 0;
+    double main_start = MPI_Wtime();
+
     /* Main loop */
     for (t = 0.0; t < t_end; t += del_t, iters++) {
         set_timestep_interval(&del_t, imax, jmax, delx, dely, u, v, Re, tau);
 
         ifluid = (imax * jmax) - ibound;
 
+        double velocity_start = MPI_Wtime();
+        
         compute_tentative_velocity(u, v, f, g, flag, imax, jmax,
             del_t, delx, dely, gamma, Re);
+        
+        double velocity_end = MPI_Wtime();
+        velocity_time += velocity_end - velocity_start;
 
         compute_rhs(f, g, rhs, flag, imax, jmax, del_t, delx, dely);
 
         if (ifluid > 0) {
+            double poisson_start = MPI_Wtime();
+            
             itersor = poisson(p, rhs, flag, imax, jmax, delx, dely,
                         eps, itermax, omega, &res, ifluid);
+            
+            double poisson_end = MPI_Wtime();
+            poisson_time += poisson_end - poisson_start;
         } else {
             itersor = 0;
         }
@@ -199,7 +222,10 @@ int main(int argc, char *argv[])
 
         apply_boundary_conditions(u, v, flag, imax, jmax, ui, vi);
     } /* End of main loop */
-  
+
+    double main_end = MPI_Wtime();
+    double finl_start = MPI_Wtime();
+
     if (outfile != NULL && strcmp(outfile, "") != 0 && proc == 0) {
         write_bin(u, v, p, flag, imax, jmax, xlength, ylength, outfile);
     }
@@ -211,6 +237,16 @@ int main(int argc, char *argv[])
     free_matrix(p);
     free_matrix(rhs);
     free_matrix(flag);
+
+    double finl_end = MPI_Wtime();
+    double end = MPI_Wtime();
+    
+    printf("\nInit time %fs.\n", init_end - init_start);
+    printf("Main time %fs.\n", main_end - main_start);
+    printf("Velocity time: %fs.\n", velocity_time);
+    printf("Poisson time: %fs.\n", poisson_time);
+    printf("Finalise time %fs.\n", finl_end - finl_start);
+    printf("\nTotal time %fs.\n", end - start);
 
     return 0;
 }

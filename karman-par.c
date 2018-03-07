@@ -44,6 +44,8 @@ int* recvcounts_edge;
 int* recvdispls_edge;
 MPI_Datatype* recvtypes_edge;
 
+extern double poisson_time;
+
 #define PACKAGE "karman"
 #define VERSION "1.0"
 
@@ -103,6 +105,10 @@ int main(int argc, char *argv[])
     
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
     MPI_Comm_rank(MPI_COMM_WORLD, &proc);
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    double start = MPI_Wtime();
+    double init_start = MPI_Wtime();
 
     /* BEGIN INITIALISE PROBLEM */
 
@@ -165,6 +171,8 @@ int main(int argc, char *argv[])
             print_help();
             exit_val = 0;
         }
+        
+        printf("Running %d processor karman on '%s'.\n\n", nprocs, infile);
     
         delx = xlength/imax;
         dely = ylength/jmax;
@@ -538,8 +546,16 @@ int main(int argc, char *argv[])
     
     /* END CREATE COMMUNICATION ARRAYS */
     
+    MPI_Barrier(MPI_COMM_WORLD);
+    double init_end = MPI_Wtime();
     
     
+    
+    double velocity_time = 0;
+    double poisson_time = 0;
+    MPI_Barrier(MPI_COMM_WORLD);
+    double main_start = MPI_Wtime();
+
     // Distribute flags once as they don't change.
     MPI_Alltoallw(flag[0], global_count_flag, global_displ_flag,
         global_type_flag, l_flag[0], local_count_flag, local_displ_flag,
@@ -550,12 +566,17 @@ int main(int argc, char *argv[])
         if (proc == 0) {
             set_timestep_interval(&del_t, imax, jmax, delx, dely,
                 u, v, Re, tau);
-
+            
             ifluid = (imax * jmax) - ibound;
-
+            
+            double velocity_start = MPI_Wtime();
+            
             compute_tentative_velocity(u, v, f, g, flag, imax, jmax,
                 del_t, delx, dely, gamma, Re);
-
+            
+            double velocity_end = MPI_Wtime();
+            velocity_time += velocity_end - velocity_start;
+            
             compute_rhs(f, g, rhs, flag, imax, jmax, del_t, delx, dely);
         }
         
@@ -563,6 +584,9 @@ int main(int argc, char *argv[])
         MPI_Bcast(&del_t, 1, MPI_INT, 0, MPI_COMM_WORLD);
         
         if (ifluid > 0) {
+            MPI_Barrier(MPI_COMM_WORLD);
+            double poisson_start = MPI_Wtime();
+            
             MPI_Alltoallw(p[0], global_count_data_d, global_displ_data_d,
                 global_type_data_d, l_p[0], local_count_data_d,
                 local_displ_data_d, local_type_data_d, MPI_COMM_WORLD);
@@ -576,6 +600,10 @@ int main(int argc, char *argv[])
             MPI_Alltoallw(l_p[0], local_count_data_c, local_displ_data_c,
                 local_type_data_c, p[0], global_count_data_c,
                 global_displ_data_c, global_type_data_c, MPI_COMM_WORLD);
+            
+            MPI_Barrier(MPI_COMM_WORLD);
+            double poisson_end = MPI_Wtime();
+            poisson_time += poisson_end - poisson_start;
         } else {
             itersor = 0;
         }
@@ -593,8 +621,13 @@ int main(int argc, char *argv[])
     } /* End of main loop */
     
     MPI_Barrier(MPI_COMM_WORLD);
+    double main_end = MPI_Wtime();
     
     
+    
+    MPI_Barrier(MPI_COMM_WORLD);
+    double finl_start = MPI_Wtime();
+
     /* BEGIN FREE COMMUNICATION ARRAYS */
     
     if (global_count_flag) free(global_count_flag);
@@ -665,6 +698,23 @@ int main(int argc, char *argv[])
     free_matrix(flag);
 
     /* END FINALISE PROBLEM */
+    
+    MPI_Barrier(MPI_COMM_WORLD);
+    double finl_end = MPI_Wtime();
+    double end = MPI_Wtime();
+    
+    double init_time = init_end - init_start;
+    double main_time = main_end - main_start;
+    double finl_time = finl_end - finl_start;
+    
+    if (proc == 0) {
+        printf("\nInit time: %fs.\n", init_time);
+        printf("Main time: %fs.\n", main_time);
+        printf("Velocity time: %fs.\n", velocity_time);
+        printf("Poisson time: %fs.\n", poisson_time);
+        printf("Finalise time: %fs.\n", finl_time);
+        printf("\nTotal time %fs.\n", end - start);
+    }
     
     MPI_Finalize();
     
