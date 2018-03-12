@@ -172,8 +172,6 @@ int main(int argc, char *argv[])
             exit_val = 0;
         }
         
-        printf("Running %d processor karman on '%s'.\n\n", nprocs, infile);
-    
         delx = xlength/imax;
         dely = ylength/jmax;
     
@@ -703,17 +701,20 @@ int main(int argc, char *argv[])
     double finl_end = MPI_Wtime();
     double end = MPI_Wtime();
     
-    double init_time = init_end - init_start;
-    double main_time = main_end - main_start;
-    double finl_time = finl_end - finl_start;
-    
     if (proc == 0) {
-        printf("\nInit time: %fs.\n", init_time);
-        printf("Main time: %fs.\n", main_time);
-        printf("Velocity time: %fs.\n", velocity_time);
-        printf("Poisson time: %fs.\n", poisson_time);
-        printf("Finalise time: %fs.\n", finl_time);
-        printf("\nTotal time %fs.\n", end - start);
+        // Human format.
+        // printf("Timings for %d processors on '%s'.\n\n", nprocs, infile);
+        // printf("\nInit time: %fs.\n", init_end - init_start);
+        // printf("Main time: %fs.\n", main_end - main_start);
+        // printf("Velocity time: %fs.\n", velocity_time);
+        // printf("Poisson time: %fs.\n", poisson_time);
+        // printf("Finalise time: %fs.\n", finl_end - finl_start);
+        // printf("\nTotal time %fs.\n", end - start);
+        
+        // CSV format.
+        printf("%d,%s,%f,%f,%f,%f,%f,%f\n", nprocs, infile,
+            init_end - init_start, main_end - main_start, velocity_time,
+            poisson_time, finl_end - finl_start, end - start);
     }
     
     MPI_Finalize();
@@ -798,9 +799,9 @@ int read_bin(float **u, float **v, float **p, char **flag,
     if (file == NULL) return -1;
 
     if ((fp = fopen(file, "rb")) == NULL) {
-        fprintf(stderr, "Could not open file '%s': %s\n", file,
-            strerror(errno));
-        fprintf(stderr, "Generating default state instead.\n");
+        // fprintf(stderr, "Could not open file '%s': %s\n", file,
+        //     strerror(errno));
+        // fprintf(stderr, "Generating default state instead.\n");
         return -1;
     }
 
