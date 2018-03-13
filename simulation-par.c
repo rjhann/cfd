@@ -3,6 +3,7 @@
 #include <math.h>
 
 #include <mpi.h>
+#include <omp.h>
 
 #include "datadef.h"
 #include "init.h"
@@ -28,6 +29,7 @@ void compute_tentative_velocity(float **u, float **v, float **f, float **g,
     int  i, j;
     float du2dx, duvdy, duvdx, dv2dy, laplu, laplv;
 
+    #pragma omp parallel for schedule(static) private(du2dx,duvdy,laplu)
     for (i=1; i<=imax-1; i++) {
         for (j=1; j<=jmax; j++) {
             /* only if both adjacent cells are fluid cells */
@@ -52,6 +54,7 @@ void compute_tentative_velocity(float **u, float **v, float **f, float **g,
         }
     }
 
+    #pragma omp parallel for schedule(static) private(duvdx,dv2dy,laplv)
     for (i=1; i<=imax; i++) {
         for (j=1; j<=jmax-1; j++) {
             /* only if both adjacent cells are fluid cells */
@@ -141,6 +144,7 @@ int poisson(float **p, float **rhs, char **flag, int imax, int jmax,
     /* Red/Black SOR-iteration */
     for (iter = 0; iter < itermax; iter++) {
         for (rb = 0; rb <= 1; rb++) {
+            #pragma omp parallel for schedule(static) private(beta_mod)
             for (i = 1; i <= imax; i++) {
                 for (j = 1; j <= jmax; j++) {
                     if ((istart+i+jstart+j) % 2 != rb) { continue; }
@@ -173,6 +177,7 @@ int poisson(float **p, float **rhs, char **flag, int imax, int jmax,
         
         /* Partial computation of residual */
         l_res = 0.0;
+        #pragma omp parallel for schedule(static) private(add) reduction(+:l_res)
         for (i = 1; i <= imax; i++) {
             for (j = 1; j <= jmax; j++) {
                 if (flag[i][j] & C_F) {

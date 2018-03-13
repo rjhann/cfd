@@ -5,6 +5,7 @@
 #include <errno.h>
 
 #include <mpi.h>
+#include <omp.h>
 
 #include "alloc.h"
 #include "boundary.h"
@@ -361,27 +362,40 @@ int main(int argc, char *argv[])
     
     /* BEGIN CREATE TYPES */
     
-    // Blocks fo distributing array. floats for data, chars for flags.
+    // Blocks of floats, for data, and chars, for flags.
     MPI_Datatype f_block;
     MPI_Datatype c_block;
-    MPI_Type_vector(block_x+2, block_y+2, jmax+3, MPI_FLOAT, &f_block);
-    MPI_Type_vector(block_x+2, block_y+2, jmax+3, MPI_CHAR, &c_block);
-    MPI_Type_commit(&f_block);
-    MPI_Type_commit(&c_block);
     
-    // Blocks for sending/receiving sub-arrays, exclude the boundaries.
-    MPI_Datatype g_f_block;
-    MPI_Datatype l_f_block;
-    MPI_Type_vector(block_x, block_y, jmax+3, MPI_FLOAT, &g_f_block);
-    MPI_Type_vector(block_x, block_y, block_y+2, MPI_FLOAT, &l_f_block);
-    MPI_Type_commit(&g_f_block);
-    MPI_Type_commit(&l_f_block);
+    // When gathering back, actual block size matters,
+    // hence create types for each long and short rows in block.
+    MPI_Datatype g_f_scol;
+    MPI_Datatype g_f_lcol;
+    MPI_Datatype l_f_scol;
+    MPI_Datatype l_f_lcol;
     
     // Block edges in each direction.
     MPI_Datatype f_x_edge;
     MPI_Datatype f_y_edge;
+    
+    MPI_Type_vector(block_x+2, block_y+2, jmax+3, MPI_FLOAT, &f_block);
+    MPI_Type_vector(block_x+2, block_y+2, jmax+3, MPI_CHAR, &c_block);
+    
+    MPI_Type_vector(block_x, block_y-1, jmax+3, MPI_FLOAT, &g_f_scol);
+    MPI_Type_vector(block_x, block_y, jmax+3, MPI_FLOAT, &g_f_lcol);
+    MPI_Type_vector(block_x, block_y-1, block_y+2, MPI_FLOAT, &l_f_scol);
+    MPI_Type_vector(block_x, block_y, block_y+2, MPI_FLOAT, &l_f_lcol);
+    
     MPI_Type_vector(block_x, 1, block_y+2, MPI_FLOAT, &f_x_edge);
     MPI_Type_vector(1, block_y, block_y+2, MPI_FLOAT, &f_y_edge);
+    
+    MPI_Type_commit(&f_block);
+    MPI_Type_commit(&c_block);
+    
+    MPI_Type_commit(&g_f_scol);
+    MPI_Type_commit(&g_f_lcol);
+    MPI_Type_commit(&l_f_scol);
+    MPI_Type_commit(&l_f_lcol);
+    
     MPI_Type_commit(&f_x_edge);
     MPI_Type_commit(&f_y_edge);
     
@@ -425,8 +439,9 @@ int main(int argc, char *argv[])
     for (i = 0; i < nprocs; i++) {
         local_type_flag[i] = MPI_CHAR;
         local_type_data_d[i] = MPI_FLOAT;
-        local_type_data_c[i] = l_f_block;
-        global_type_data_c[i] = g_f_block;
+        // Assume has a short row and correct later otherwise.
+        local_type_data_c[i] = l_f_scol;
+        global_type_data_c[i] = g_f_scol;
         // Need to be initialised on all even though only rank 0 uses them.
         global_type_flag[i] = c_block;
         global_type_data_d[i] = f_block;
@@ -441,6 +456,7 @@ int main(int argc, char *argv[])
     local_count_data_d[0] = (block_x+2) * (block_y+2);
     local_count_data_c[0] = 1;
     local_displ_data_c[0] = (&(l_p[1][1]) - &(l_p[0][0])) * sizeof(float);
+    if (l_jmax == block_y) local_type_data_c[0] = l_f_lcol;
     
     // Rank 0 needs block sizes and start points from each other process
     // to determine their block types and offset.
@@ -475,6 +491,7 @@ int main(int argc, char *argv[])
             global_displ_data_d[i] = (&(p[x][y]) - &(p[0][0])) * sizeof(float);
             
             global_count_data_c[i] = 1;
+            if (y_size[i] == block_y) global_type_data_c[i] = g_f_lcol;
             // +1s account for dropping local borders on collection.
             global_displ_data_c[i] = (&(p[x+1][y+1]) - &(p[0][0])) * sizeof(float);
             
@@ -653,8 +670,10 @@ int main(int argc, char *argv[])
     MPI_Type_free(&f_block);
     MPI_Type_free(&c_block);
     
-    MPI_Type_free(&g_f_block);
-    MPI_Type_free(&l_f_block);
+    MPI_Type_free(&g_f_scol);
+    MPI_Type_free(&g_f_lcol);
+    MPI_Type_free(&l_f_scol);
+    MPI_Type_free(&l_f_lcol);
     
     MPI_Type_free(&f_x_edge);
     MPI_Type_free(&f_y_edge);
@@ -669,13 +688,13 @@ int main(int argc, char *argv[])
         }
     }
     
-    if (u) free_matrix(u);
-    if (v) free_matrix(v);
-    if (f) free_matrix(f);
-    if (g) free_matrix(g);
-    if (p) free_matrix(p);
-    if (rhs) free_matrix(rhs);
-    if (flag) free_matrix(flag);
+    free_matrix(u);
+    free_matrix(v);
+    free_matrix(f);
+    free_matrix(g);
+    free_matrix(p);
+    free_matrix(rhs);
+    free_matrix(flag);
 
     /* END FINALISE PROBLEM */
     
@@ -685,7 +704,8 @@ int main(int argc, char *argv[])
     
     if (proc == 0) {
         // Human format.
-        printf("Timings for %d processors on '%s'.\n\n", nprocs, infile);
+        printf("Timings for %d processors with %d threads on '%s'.\n\n",
+            nprocs, omp_get_max_threads(), infile);
         printf("\nInit time: %fs.\n", init_end - init_start);
         printf("Main time: %fs.\n", main_end - main_start);
         printf("Velocity time: %fs.\n", velocity_time);
@@ -694,9 +714,9 @@ int main(int argc, char *argv[])
         printf("\nTotal time %fs.\n", end - start);
         
         // CSV format.
-        // printf("%d,%s,%f,%f,%f,%f,%f,%f\n", nprocs, infile,
-        //     init_end - init_start, main_end - main_start, velocity_time,
-        //     poisson_time, finl_end - finl_start, end - start);
+        // printf("%d,%d,%s,%f,%f,%f,%f,%f,%f\n", nprocs, omp_get_max_threads(),
+        //     infile, init_end - init_start, main_end - main_start,
+        //     velocity_time, poisson_time, finl_end - finl_start, end - start);
     }
     
     MPI_Finalize();

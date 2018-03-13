@@ -1,5 +1,5 @@
-CC=mpicc
-CFLAGS=-O2 -Wall -g -pg 
+CC=mpiicc
+CFLAGS=-O2 -qopenmp -Wall -g -pg 
 
 .c.o:
 	$(CC) -c $(CFLAGS) $<
