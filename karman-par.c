@@ -246,7 +246,7 @@ int main(int argc, char *argv[])
     
     if (proc == 0) {
         decompose_2d(imax, jmax, nprocs, dims);
-        if (verbose > 1) {
+        if (verbose > 2) {
             printf("Decomposing problem into %dx%d blocks.\n",
                 dims[0], dims[1]);
         }
@@ -267,7 +267,7 @@ int main(int argc, char *argv[])
     int coords[2];
     MPI_Cart_coords(cartesian_comm, proc, 2, coords);
     
-    if (verbose > 1) {
+    if (verbose > 2) {
         printf("Rank %d is on block (%d, %d).\n", proc, coords[0], coords[1]);
     }
     
@@ -303,7 +303,7 @@ int main(int argc, char *argv[])
         MPI_Cart_rank(cartesian_comm, neighbor_coords, &proc_down);
     }
     
-    if (verbose > 2) {
+    if (verbose > 3) {
         printf("Rank %d neighbors - left: %d up: %d right: %d down: %d.\n",
             proc, proc_left, proc_up, proc_right, proc_down);
     }
@@ -324,7 +324,7 @@ int main(int argc, char *argv[])
     int l_imax = ((coords[0] + 1) * imax / dims[0]) - istart;
     int l_jmax = ((coords[1] + 1) * jmax / dims[1]) - jstart;
     
-    if (verbose > 2) {
+    if (verbose > 3) {
         printf("Rank %d has block of size %dx%d (excluding borders).\n",
             proc, l_imax, l_jmax);
     }
@@ -688,13 +688,13 @@ int main(int argc, char *argv[])
         }
     }
     
-    free_matrix(u);
-    free_matrix(v);
-    free_matrix(f);
-    free_matrix(g);
-    free_matrix(p);
-    free_matrix(rhs);
-    free_matrix(flag);
+    if (u) free_matrix(u);
+    if (v) free_matrix(v);
+    if (f) free_matrix(f);
+    if (g) free_matrix(g);
+    if (p) free_matrix(p);
+    if (rhs) free_matrix(rhs);
+    if (flag) free_matrix(flag);
 
     /* END FINALISE PROBLEM */
     
@@ -702,16 +702,16 @@ int main(int argc, char *argv[])
     double finl_end = MPI_Wtime();
     double end = MPI_Wtime();
     
-    if (proc == 0) {
+    if (proc == 0 && verbose > 1) {
         // Human format.
-        printf("Timings for %d processors with %d threads on '%s'.\n\n",
+        printf("\nTimings for %d processors with %d threads on '%s'.\n\n",
             nprocs, omp_get_max_threads(), infile);
-        printf("\nInit time: %fs.\n", init_end - init_start);
+        printf("Init time: %fs.\n", init_end - init_start);
         printf("Main time: %fs.\n", main_end - main_start);
         printf("Velocity time: %fs.\n", velocity_time);
         printf("Poisson time: %fs.\n", poisson_time);
-        printf("Finalise time: %fs.\n", finl_end - finl_start);
-        printf("\nTotal time %fs.\n", end - start);
+        printf("Finalise time: %fs.\n\n", finl_end - finl_start);
+        printf("Total time %fs.\n", end - start);
         
         // CSV format.
         // printf("%d,%d,%s,%f,%f,%f,%f,%f,%f\n", nprocs, omp_get_max_threads(),
@@ -801,9 +801,9 @@ int read_bin(float **u, float **v, float **p, char **flag,
     if (file == NULL) return -1;
 
     if ((fp = fopen(file, "rb")) == NULL) {
-        // fprintf(stderr, "Could not open file '%s': %s\n", file,
-        //     strerror(errno));
-        // fprintf(stderr, "Generating default state instead.\n");
+        fprintf(stderr, "Could not open file '%s': %s\n", file,
+            strerror(errno));
+        fprintf(stderr, "Generating default state instead.\n");
         return -1;
     }
 
